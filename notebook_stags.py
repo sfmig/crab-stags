@@ -5,7 +5,8 @@ Recommended flow:
 2. Define the marker's 3D corner coordinates in its local coordinate system
 3. Detect markers with stag.detectMarkers(...)
 4. Undistort the detected 2D corners into normalized coordinates
-5. Run cv2.solvePnP(...) with identity K and zero distortion
+5. Run cv2.solvePnPGeneric(...) with identity K and zero distortion, and resolve
+   the two-fold planar pose ambiguity it returns (see select_pose)
 6. Convert the returned rotation vector to a rotation matrix with cv2.Rodrigues(...)
 
 The corner order must match between your 3D obj_points and the 2D corners returned by STag.
@@ -129,6 +130,121 @@ def draw_frame_axes(image, camera, rvec, tvec, length, thickness=3):
 
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Helper: resolve the planar pose ambiguity
+#
+# Four coplanar points constrain only the homography, and decomposing a
+# homography gives two poses that satisfy the cheirality constraint. Both
+# reproject the corners almost equally well, so a single-solution solver picks
+# between them on noise alone and the marker's normal flips frame to frame.
+#
+# The two poses are related by a reflection of the marker normal about the line
+# of sight: the tilt away from the camera keeps its magnitude and swaps its
+# sign. What separates them is perspective foreshortening across the marker,
+# of relative size
+#
+#     eps ~ (marker size) * sin(tilt) / (distance)
+#
+# For a 5 cm marker at 1.5 m that is around 1%, i.e. sub-pixel, hence the
+# instability at small, distant or near-frontal markers.
+#
+# STag and ARToolKit+ handle this by computing both solutions and keeping the
+# one with the lower error (the RPP method of Schweighofer & Pinz, "Robust pose
+# estimation from a planar target", TPAMI 2006). The STag pose estimation approach
+# described in the paper is not exposed by stag-python (we only get corners), so we do
+# something equivalent here with cv2.solvePnPGeneric. While RPP uses object-space error
+# (measured along the ray in the scene), we measure reprojection error in the image plane.
+# For selecting between two candidates the two metrics almost always agree.
+#
+# RPP stops there: lower error wins, decided fresh each frame with no history.
+# But the error test alone is least reliable in exactly the regime that causes
+# flipping. So beyond RPP we additionally use the ratio of the two errors as an
+# ambiguity *detector*, and fall back to temporal continuity when the frame
+# cannot decide on its own.
+
+
+def rotation_angle_between(rvec_a, rvec_b):
+    """Geodesic angle in radians between two rotations, as Rodrigues vectors."""
+    R_a, _ = cv2.Rodrigues(np.asarray(rvec_a, dtype=np.float64).reshape(3, 1))
+    R_b, _ = cv2.Rodrigues(np.asarray(rvec_b, dtype=np.float64).reshape(3, 1))
+    # R_a.T @ R_b is the rotation that takes you from frame a to frame b, expressed in a's frame.
+    # cv2.Rodrigues on that matrix gives the axis-angle vector, whose norm is the geodesic angle
+    # between the two orientations. Geodesic (angular) is the arc length of the shortest path within SO(3)
+    # between the two orientations R_a and R_b
+    r_rel, _ = cv2.Rodrigues(R_a.T @ R_b)
+    return float(np.linalg.norm(r_rel))
+
+
+def select_pose(rvecs, tvecs, errors, prev_rvec, ratio_threshold):
+    """Choose between the candidate poses returned by cv2.solvePnPGeneric.
+
+    Parameters
+    ----------
+    rvecs, tvecs : sequence of (3, 1) arrays
+        Candidate poses.
+    errors : sequence of float
+        Per-candidate RMS reprojection error, in the units solvePnPGeneric was
+        called with (normalized here, i.e. focal lengths, not pixels).
+    prev_rvec : (3, 1) array or None
+        Accepted rotation for this marker on a recent frame, if any.
+    ratio_threshold : float
+        Below this, errors[0] / errors[1] is treated as decisive.
+
+    Returns
+    -------
+    rvec, tvec, info
+        info carries err_ratio, whether the frame was ambiguous, and which rule
+        made the choice ("only-solution", "error", "continuity" or
+        "error-no-history").
+    """
+    order = np.argsort(np.asarray(errors, dtype=np.float64).ravel())
+    rvecs = [rvecs[i] for i in order]
+    tvecs = [tvecs[i] for i in order]
+    errors = [float(np.ravel(errors[i])[0]) for i in order]
+
+    if len(rvecs) == 1:
+        return rvecs[0], tvecs[0], {
+            "err_ratio": 0.0,
+            "ambiguous": False,
+            "chose_by": "only-solution",
+        }
+
+    # errors[0] <= errors[1] after the sort, so the ratio is in [0, 1].
+    # Near 1 means the two candidates explain the corners equally well.
+    # Guard the degenerate case of a numerically exact fit on both.
+    err_ratio = errors[0] / errors[1] if errors[1] > 0 else 1.0
+    ambiguous = err_ratio >= ratio_threshold
+
+    if not ambiguous:
+        # The perspective signal is above the noise: trust it. Deliberately
+        # checked before continuity so a genuine flip of the marker is followed
+        # rather than suppressed, and so a wrong lock cannot persist forever.
+        return rvecs[0], tvecs[0], {
+            "err_ratio": err_ratio,
+            "ambiguous": False,
+            "chose_by": "error",
+        }
+
+    if prev_rvec is None:
+        # Ambiguous and nothing to fall back on. Take the lower error, but say so.
+        return rvecs[0], tvecs[0], {
+            "err_ratio": err_ratio,
+            "ambiguous": True,
+            "chose_by": "error-no-history",
+        }
+
+    # Ambiguous: pick the candidate closest to where this marker just was.
+    # Only rotation is compared, since the two solutions differ mainly in the
+    # normal and share nearly the same translation.
+    angles = [rotation_angle_between(prev_rvec, rvec) for rvec in rvecs]
+    best = int(np.argmin(angles))
+    return rvecs[best], tvecs[best], {
+        "err_ratio": err_ratio,
+        "ambiguous": True,
+        "chose_by": "continuity",
+    }
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Inputs for video source
 # - an int is a camera index (0 = default webcam), relevant for live stream
 # - also accepts a video file path (relevant for offline processing)
@@ -144,6 +260,26 @@ show_preview = True
 # whether to annotate each detected corner with its index
 # useful to confirm the 2D corner order matches obj_points
 check_corner_order = True
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Inputs for pose ambiguity handling
+
+# How decisive the two reprojection errors have to be, as errors[0] / errors[1]
+# with errors[0] the smaller. 0 means one candidate fits perfectly and the other
+# does not; 1 means they are indistinguishable. If the ratio is below this
+# threshold we trust the errors; if it is at or above, we treat the frame as
+# ambiguous and fall back to continuity.
+# 0.6 is the usual starting point; raise it to lean harder on
+# continuity, lower it to lean harder on the current frame.
+ambiguity_ratio_threshold = 0.6
+
+# How many frames a marker may go undetected before its remembered pose is
+# considered stale. Keeps continuity from being seeded by where a marker was
+# several seconds ago, e.g. after an occlusion.
+pose_memory_frames = 5
+
+# whether to print a line each time a frame is ambiguous
+report_ambiguity = True
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Initialise loop
@@ -184,6 +320,10 @@ if output_path is not None:
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Run loop
+
+# Last accepted pose per marker id, as {marker_id: (frame_idx, rvec)}.
+# Read by select_pose to break ties that the current frame cannot.
+prev_poses = {}
 
 # Process every frame
 frame_idx = 0
@@ -256,7 +396,11 @@ try:
                 # Any other K or nonzero distortion would apply the correction a second time.
                 # rvec/tvec are unaffected by the change of image coordinates and
                 # stay in the units of obj_points (metres).
-                success, rvec, tvec = cv2.solvePnP(
+                # solvePnPGeneric returns every solution the flag admits, rather
+                # than the single one solvePnP picks. For IPPE_SQUARE that is the
+                # two poses of the planar ambiguity, plus their reprojection
+                # errors, so we can judge how separable they are (see select_pose).
+                n_solutions, rvecs, tvecs, errors = cv2.solvePnPGeneric(
                     obj_points,
                     img_points_norm,
                     np.identity(3),
@@ -271,7 +415,33 @@ try:
                     # (top-left, top-right, bottom-right, bottom-left in the marker frame)
                 )
 
-                if success:
+                if n_solutions > 0:
+                    # Only reuse the remembered pose if it is recent: a marker
+                    # that has been out of view has had time to move, and a stale
+                    # pose would bias the tie-break toward a stale answer.
+                    prev_entry = prev_poses.get(marker_id)
+                    prev_rvec = None
+                    if prev_entry is not None:
+                        prev_frame_idx, remembered_rvec = prev_entry
+                        if frame_idx - prev_frame_idx <= pose_memory_frames:
+                            prev_rvec = remembered_rvec
+
+                    rvec, tvec, pose_info = select_pose(
+                        rvecs,
+                        tvecs,
+                        errors,
+                        prev_rvec,
+                        ambiguity_ratio_threshold,
+                    )
+                    prev_poses[marker_id] = (frame_idx, rvec)
+
+                    if report_ambiguity and pose_info["ambiguous"]:
+                        print(
+                            f"Frame {frame_idx}, marker {marker_id}: ambiguous pose "
+                            f"(error ratio {pose_info['err_ratio']:.2f}), "
+                            f"resolved by {pose_info['chose_by']}"
+                        )
+
                     # Express rotation as matrix
                     R_matrix, _ = cv2.Rodrigues(rvec)
 
