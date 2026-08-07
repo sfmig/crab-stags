@@ -22,8 +22,7 @@ video_path = Path(
 
 charuco_n_cols = 4
 charuco_n_rows = 5
-charuco_square_sz_cm = 5.40  # default 3.0?
-
+charuco_square_sz_cm = 5.00  
 
 # Claude says:
 # charuco_square_sz_cm = 5.40 does not propagate into the intrinsics 
@@ -34,6 +33,12 @@ charuco_square_sz_cm = 5.40  # default 3.0?
 # Intrinsic calibration does not use physical size. 
 # You can measure your target after intrinsic calibration, 
 # or use different-sized boards for the two stages.
+
+# fisheye camera
+is_camera_fisheye = True # set False for normal lenses
+
+# 2d landmark extraction
+frame_step = 5
 
 # %%
 # Create charuco tracker
@@ -55,14 +60,14 @@ cameras = CameraArray.from_video_metadata({0: video_path})
 # ATT! cv2.solvePnP interprets a length-4 distCoeffs as (k1, k2, p1, p2) 
 # in the plumb-bob/Brown-Conrady/standard model. So we need to pass undistorted points.
 # (solvePnP has no fisheye mode) 
-cameras[0].fisheye = True   # set False for normal lenses
+cameras[0].fisheye = is_camera_fisheye   
 
 # Extract 2d landmarks from calibration video
 points = extract_image_points(
     video_path,
     cam_id=0,
     tracker=tracker,
-    frame_step=30,
+    frame_step=frame_step,
 )
 
 # Calibrate single camera
