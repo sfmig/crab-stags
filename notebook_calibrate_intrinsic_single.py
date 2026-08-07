@@ -17,7 +17,7 @@ from caliscope.api import (
 # %%
 # Params
 video_path = Path(
-    "/Users/sofia/swc/project_caliscope/P2/calibration/intrinsic/cam_2.mp4"
+    "/Users/sofia/swc/project_stags/calibration_video_20260807_1823.mp4"
 )
 
 charuco_n_cols = 4
@@ -35,10 +35,10 @@ charuco_square_sz_cm = 5.00
 # or use different-sized boards for the two stages.
 
 # fisheye camera
-is_camera_fisheye = True # set False for normal lenses
+is_camera_fisheye = False # set False for normal lenses
 
 # 2d landmark extraction
-frame_step = 5
+frame_step = 1
 
 # %%
 # Create charuco tracker
@@ -71,17 +71,23 @@ points = extract_image_points(
 )
 
 # Calibrate single camera
+# NOTE: at max, the best 30 frames are used 
+# (see grid_count = 30 in .toml file)
 output = calibrate_intrinsics(points, cameras[0])
+
+# overwrite camera
+cameras[0] = output.camera
 
 # %%
 # Write calibration parameters to file
-print(output.camera.matrix)
-print(output.camera.distortions)
+print(cameras[0].matrix)
+print(cameras[0].distortions)
+print(cameras[0].fisheye)
 print(f"RMSE (px): {output.camera.error}")
 
-cameras[0] = output.camera
 output_path = video_path.parent / f"{video_path.stem}_intrinsics.toml"
 cameras.to_toml(output_path)
 print(f"Saved intrinsics to {output_path}")
 
 # %%
+# TODO: visualise results?
