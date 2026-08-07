@@ -30,6 +30,11 @@ charuco_square_sz_cm = 5.40  # default 3.0?
 # — it only scales the object points, so it affects the discarded rvecs/tvecs. 
 # You could set it to 1.0 and get identical matrix/distortions.
 
+# From the docs:
+# Intrinsic calibration does not use physical size. 
+# You can measure your target after intrinsic calibration, 
+# or use different-sized boards for the two stages.
+
 # %%
 # Create charuco tracker
 charuco = Charuco.from_squares(
