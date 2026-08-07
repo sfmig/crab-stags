@@ -21,6 +21,11 @@ import numpy as np
 import stag
 from caliscope.api import CameraArray
 
+# stag.detectMarkers segfaults on some real frames (an upstream buffer overrun
+# in its edge detector, unfixed as of stag-python 1.1.1). Running it in a
+# subprocess keeps a bad frame from killing the kernel; see stag_safe.py.
+from stag_safe import StagDetector
+
 # project_points dispatches between the Brown-Conrady and fisheye equidistant
 # models. Not part of caliscope.api's public surface, but it is the same helper
 # the library uses internally for all of its own reprojection.
@@ -30,7 +35,7 @@ from caliscope.core.reprojection import project_points
 # Marker: input data
 
 # the units used here determine the sale for tvec etc
-marker_side_m = 0.05  # meters, example: 5 cm
+marker_side_m = 0.10  # meters
 
 # Set library or family of tags to use
 # https://github.com/manfredstoiber/stag-python#-configuration
@@ -71,7 +76,7 @@ obj_points = np.array(
 # (k1, k2, k3, k4) for fisheye
 # camera.fisheye says which of the two models the coefficients belong to
 intrinsics_path = Path(
-    "/Users/sofia/swc/project_caliscope/P2/calibration/intrinsic/cam_2_intrinsics.toml"
+    "/Users/sofia/swc/project_stags/calibration_video_20260807_1823_intrinsics.toml"
 )
 cam_id = 0
 
@@ -318,12 +323,17 @@ if output_path is not None:
         (frame_w, frame_h),
     )
 
-# %%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 # Run loop
 
 # Last accepted pose per marker id, as {marker_id: (frame_idx, rvec)}.
 # Read by select_pose to break ties that the current frame cannot.
 prev_poses = {}
+
+# Marker detection, isolated in a subprocess so an upstream segfault costs us
+# one frame instead of the kernel. Frames lost this way are listed in
+# detector.skipped and reported after the loop.
+detector = StagDetector(libraryHD=stag_libraryHD)
 
 # Process every frame
 frame_idx = 0
@@ -337,7 +347,28 @@ try:
         # Detect markers
         # corners: A list containing the (x, y)-coordinates of our detected ArUco markers
         # ids: The ArUco IDs of the detected markers
-        corners, ids, rejected = stag.detectMarkers(image, stag_libraryHD)
+        # Same signature and return as stag.detectMarkers, but a frame that
+        # crashes the detector comes back as an empty detection rather than
+        # taking the kernel down with it.
+        corners, ids, rejected = detector.detect(image)
+
+        # A crashed frame carries no detections, making it indistinguishable in
+        # the video from a frame the marker simply left. Label it, so a gap in
+        # the pose track can be read as a detector failure rather than as the
+        # marker moving out of view. detector.skipped holds frame indices (one
+        # detect call per frame, both counters starting at 0), and is appended
+        # to in order, so the last entry is this frame iff it just crashed.
+        frame_was_skipped = bool(detector.skipped) and detector.skipped[-1] == frame_idx
+        if frame_was_skipped:
+            cv2.putText(
+                image,
+                "DETECTOR CRASHED",
+                (20, 60),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.5,
+                (0, 0, 255),
+                3,
+            )
 
         # Draw markers
         # the dot marks corner 0, the id is printed midway between
@@ -505,3 +536,16 @@ finally:
         writer.release()
     if show_preview:
         cv2.destroyAllWindows()
+    detector.close()
+
+# Frames the detector crashed on carry no detections, so they are indistinguishable
+# from empty frames in the output video. Report them explicitly: a high count means
+# the results are sparse for a reason that has nothing to do with the markers.
+if detector.skipped:
+    print(
+        f"\n{len(detector.skipped)} of {frame_idx} frames were skipped after the "
+        f"stag detector crashed on them (upstream bug, see stag_safe.py)."
+    )
+    print(f"skipped frame indices: {detector.skipped}")
+
+# %%
