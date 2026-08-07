@@ -49,10 +49,12 @@ tracker = CharucoTracker(charuco)
 cameras = CameraArray.from_video_metadata({0: video_path})
 
 # set Fisheye lens
-# fisheye model uses 4 distortion coefficients (k1, k2, k3, k4);
-# standard uses 5
+# fisheye model uses 4 distortion coefficients (k1, k2, k3, k4), assumes equidistant model.
+# standard uses 5; 
+# See: https://github.com/mprib/caliscope/blob/ddda95b44ba281c9bf968d2d0acbf7b0ab167e7d/src/caliscope/core/reprojection.py#L21
 # ATT! cv2.solvePnP interprets a length-4 distCoeffs as (k1, k2, p1, p2) 
-# in the plumb-bob/Brown-Conrady model 
+# in the plumb-bob/Brown-Conrady/standard model. So we need to pass undistorted points.
+# (solvePnP has no fisheye mode) 
 cameras[0].fisheye = True   # set False for normal lenses
 
 # Extract 2d landmarks from calibration video
@@ -67,8 +69,14 @@ points = extract_image_points(
 output = calibrate_intrinsics(points, cameras[0])
 
 # %%
+# Write calibration parameters to file
 print(output.camera.matrix)
 print(output.camera.distortions)
 print(f"RMSE (px): {output.camera.error}")
-# output.report
+
+cameras[0] = output.camera
+output_path = video_path.parent / f"{video_path.stem}_intrinsics.toml"
+cameras.to_toml(output_path)
+print(f"Saved intrinsics to {output_path}")
+
 # %%
