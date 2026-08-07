@@ -19,17 +19,40 @@ import numpy as np
 import stag
 
 # %%%%%%%%%%%%%%%%%%%%
-# Input data
+# Marker: input data
 
 # the units used here determine the sale for tvec etc
 marker_side_m = 0.05  # meters, example: 5 cm
 
-# camera calibration results
-# For solvePnP, OpenCV expects 
-# cameraMatrix = [[fx, 0, cx], [0, fy, cy], [0, 0, 1]], and distCoeffs 
-# in the form (k1, k2, p1, p2[, k3[, k4, k5, k6[, s1, s2, s3, s4[, τx, τy]]]]). 
+# Set library or family of tags to use
+# https://github.com/manfredstoiber/stag-python#-configuration
+# errorCorrection is in the range 0 <= errorCorrection <= (libraryHD-1)/2
+stag_libraryHD = 15
+
+
+# 3D marker corners in the marker coordinate frame
+# origin: marker centre
+# order must match the detected 2D corner order from stag
+# obj_points must be the cycle 0→1→2→3 going around the square, with row 0 at the marker-frame origin corner
+obj_points = np.array([
+    [-marker_side_m / 2, -marker_side_m / 2, 0],  # (0,0)
+    [ marker_side_m / 2, -marker_side_m / 2, 0],  # (1,0)
+    [ marker_side_m / 2,  marker_side_m / 2, 0],  # (1,1)
+    [-marker_side_m / 2,  marker_side_m / 2, 0],  # (0,1)
+], dtype=np.float32)
+
+
+# %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+# Input data: camera calibration
+# For solvePnP, OpenCV expects
+# cameraMatrix = [[fx, 0, cx], [0, fy, cy], [0, 0, 1]], and distCoeffs
+# in the form (k1, k2, p1, p2[, k3[, k4, k5, k6[, s1, s2, s3, s4[, τx, τy]]]]).
 # If distCoeffs is empty or None, OpenCV assumes zero distortion. (https://docs.opencv.org/3.3.1/d9/d0c/group__calib3d.html)
 # https://docs.opencv.org/3.3.1/d9/d0c/group__calib3d.html#:~:text=In%20the%20functions%20below%20the%20coefficients%20are%20passed%20or%20returned%20as
+#
+# fx, fy, cx, cy are all in pixels, at the resolution you calibrated at
+# dist_coeffs are dimensionless
+#
 camera_matrix = np.array(
     [
         [800.0, 0.0, 320.0],
@@ -42,17 +65,7 @@ camera_matrix = np.array(
 # dist_coeffs = np.array([k1, k2, p1, p2, k3], dtype=np.float32)
 dist_coeffs = np.zeros((5, 1), dtype=np.float32)
 
-# 3D marker corners in the marker coordinate frame
-# order must match the detected 2D corner order from stag
-obj_points = np.array(
-    [
-        [-marker_side_m / 2, marker_side_m / 2, 0],
-        [marker_side_m / 2, marker_side_m / 2, 0],
-        [marker_side_m / 2, -marker_side_m / 2, 0],
-        [-marker_side_m / 2, -marker_side_m / 2, 0],
-    ],
-    dtype=np.float32,
-)
+
 
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Inputs for video source
@@ -109,13 +122,21 @@ try:
         # Detect markers
         # corners: A list containing the (x, y)-coordinates of our detected ArUco markers
         # ids: The ArUco IDs of the detected markers
-        corners, ids, rejected = stag.detectMarkers(image, 21)
+        corners, ids, rejected = stag.detectMarkers(image, stag_libraryHD)
+
+        # Draw markers
+        # white dot is corner 0;
+        # confirm corners 1,2,3 walk around the marker in the order
+        # specified in obj_points
+        stag.drawDetectedMarkers(image, corners, ids)
 
         # If at least one marker detected, loop thru them
         if ids is not None and len(ids) > 0:
             for marker_corners, marker_id in zip(corners, ids.flatten()):
                 # get coordinates of markers in the image coord system
                 img_points = np.asarray(marker_corners, dtype=np.float32).reshape(4, 2)
+
+                # TODO: undistort image points if fisheye
 
                 # solve PnP
                 # https://docs.opencv.org/4.13.0/d5/d1f/calib3d_solvePnP.html
@@ -127,6 +148,8 @@ try:
                     camera_matrix,
                     dist_coeffs,
                     flags=cv2.SOLVEPNP_IPPE_SQUARE, # if square marker, required 4 points
+                    # IPPE_SQUARE expects the specific corner ordering 
+                    # (top-left, top-right, bottom-right, bottom-left in the marker frame)
                 )
 
                 if success:
@@ -166,6 +189,8 @@ try:
 
         # Update         
         frame_idx += 1
+
+# A finally block runs no matter how the "try" block ends
 finally:
     cap.release()
     if writer is not None:
