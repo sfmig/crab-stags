@@ -24,6 +24,12 @@ charuco_n_cols = 4
 charuco_n_rows = 5
 charuco_square_sz_cm = 5.40  # default 3.0?
 
+
+# Claude says:
+# charuco_square_sz_cm = 5.40 does not propagate into the intrinsics 
+# — it only scales the object points, so it affects the discarded rvecs/tvecs. 
+# You could set it to 1.0 and get identical matrix/distortions.
+
 # %%
 # Create charuco tracker
 charuco = Charuco.from_squares(
@@ -40,6 +46,8 @@ cameras = CameraArray.from_video_metadata({0: video_path})
 # set Fisheye lens
 # fisheye model uses 4 distortion coefficients (k1, k2, k3, k4);
 # standard uses 5
+# ATT! cv2.solvePnP interprets a length-4 distCoeffs as (k1, k2, p1, p2) 
+# in the plumb-bob/Brown-Conrady model 
 cameras[0].fisheye = True   # set False for normal lenses
 
 # Extract 2d landmarks from calibration video
