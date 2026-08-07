@@ -141,6 +141,10 @@ output_path = "pose_result.mp4"
 # whether to show a live preview window (press q to stop)
 show_preview = True
 
+# whether to annotate each detected corner with its index
+# useful to confirm the 2D corner order matches obj_points
+check_corner_order = True
+
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 # Initialise loop
 
@@ -196,10 +200,29 @@ try:
         corners, ids, rejected = stag.detectMarkers(image, stag_libraryHD)
 
         # Draw markers
-        # white dot is corner 0;
-        # confirm corners 1,2,3 walk around the marker in the order
-        # specified in obj_points
+        # the dot marks corner 0, the id is printed midway between
+        # corners 0 and 2
         stag.drawDetectedMarkers(image, corners, ids)
+
+        # Visual check of the corner order
+        # stag's drawing does not distinguish corner 1 from corner 3,
+        # so label the indices to confirm 0,1,2,3 walk around the marker
+        # in the same order as obj_points
+        # If the walk direction or the starting corner is off, 
+        # apply the constant np.roll on img_points rather than touching obj_points — SOLVEPNP_IPPE_SQUARE pins that ordering.
+        if check_corner_order:
+            for marker_corners in corners:
+                pts = np.asarray(marker_corners, dtype=np.float32).reshape(4, 2)
+                for corner_idx, (x, y) in enumerate(pts):
+                    cv2.putText(
+                        image,
+                        str(corner_idx),
+                        (int(x) + 8, int(y) - 8),  # offset to clear the corner dot
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 0, 255),
+                        2,
+                    )
 
         # If at least one marker detected, loop thru them
         if ids is not None and len(ids) > 0:
