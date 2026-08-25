@@ -1,0 +1,29 @@
+# Config for scripts/detect_markers.py
+# Paths are resolved relative to this file.
+
+# An int is a camera index (0 is usually the built-in webcam);
+# a string is a path to a video file.
+video_source: 0
+# video_source: ../calibration/my_marker_video.mp4
+
+# STag library/family: one of [11, 13, 15, 17, 19, 21, 23]
+stag_libraryHD: 15
+
+# Camera intrinsics from scripts/compute_intrinsics.py.
+# Optional, and only used to undistort the marker corners before the centre is
+# computed. Without it the centre assumes a pinhole camera, which costs up to
+# about a pixel near the frame edge.
+intrinsics: ../calibration/calibration_video_20260807_1823_intrinsics.toml
+cam_id: 0
+
+# Where the .csv (and annotated .mp4) go
+# defaults to the video's folder, or to this file's folder for a live camera
+# output_dir: ../calibration
+
+save_annotated_video: true
+
+# press q to stop
+show_preview: false
+
+# Used if the source reports 0 fps (webcams often do)
+fallback_fps: 30.0
