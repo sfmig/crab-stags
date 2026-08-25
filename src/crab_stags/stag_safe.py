@@ -52,6 +52,7 @@ import select
 import struct
 import subprocess
 import sys
+import threading
 
 import numpy as np
 
@@ -102,9 +103,7 @@ class StagDetector:
         Seconds to wait for one frame's result. Guards against a hang rather
         than a crash (a crash is detected immediately, via the closed pipe).
         Generous by default: this is a deadlock backstop, not a latency budget.
-        Implemented with select() on a pipe, which is POSIX-only; on Windows
-        this would need a reader thread instead. Everything else here is
-        portable.
+        See _recv_bounded for how the wait is implemented on each platform.
     max_restarts : int or None
         Give up after this many worker deaths, so a systematically fatal input
         cannot spin forever. None for no limit.
@@ -208,15 +207,46 @@ class StagDetector:
 
         try:
             _send(self._proc.stdin, image)
-            # Only the wait for the first byte is bounded; once the worker has
-            # started answering, the rest of the message follows immediately.
-            ready, _, _ = select.select([self._proc.stdout], [], [], self.timeout)
-            if not ready:
-                raise TimeoutError(f"worker did not answer within {self.timeout}s")
-            return _recv(self._proc.stdout)
+            return self._recv_bounded(self._proc.stdout)
         except (EOFError, BrokenPipeError, ConnectionResetError, OSError, TimeoutError) as exc:
             self._on_worker_lost(call_idx, exc)
             return EMPTY_DETECTION
+
+    def _recv_bounded(self, stream):
+        """Read one result off the worker, giving up after self.timeout seconds.
+
+        On POSIX only the wait for the first byte is bounded; once the worker
+        has started answering, the rest of the message follows immediately.
+
+        select() accepts only sockets on Windows -- handed a pipe it raises
+        WinError 10093, which detect() would read as a dead worker and so skip
+        every single frame. There the whole read goes into a helper thread and
+        the bound is a join() on it instead. The thread is a daemon and is left
+        behind on a timeout: _reap() closes the pipe right after, which unblocks
+        it and lets it exit.
+        """
+        if sys.platform != "win32":
+            ready, _, _ = select.select([stream], [], [], self.timeout)
+            if not ready:
+                raise TimeoutError(f"worker did not answer within {self.timeout}s")
+            return _recv(stream)
+
+        outcome = {}
+
+        def read_one():
+            try:
+                outcome["value"] = _recv(stream)
+            except BaseException as exc:  # re-raised on the calling thread below
+                outcome["error"] = exc
+
+        reader = threading.Thread(target=read_one, daemon=True)
+        reader.start()
+        reader.join(self.timeout)
+        if reader.is_alive():
+            raise TimeoutError(f"worker did not answer within {self.timeout}s")
+        if "error" in outcome:
+            raise outcome["error"]
+        return outcome["value"]
 
     def _on_worker_lost(self, call_idx, exc):
         returncode = self._reap()
