@@ -1,0 +1,40 @@
+# Config for scripts/capture_calibration_video_flir.py
+# Paths are resolved relative to this file.
+
+# Which camera to record from, by serial number (run with --list-cameras to see
+# them). Serials survive replugs and reboots; enumeration order does not, so with
+# two cameras attached always name one here. Leave unset to take the first found.
+# Both cameras here are mono Blackfly S BFS-U3-16S2M, 1440x1080:
+#   23025370  and  23594005
+camera_serial: "23025370" 
+
+# Where the recorded .mp4 goes (defaults to this file's folder)
+output_dir: ../calibration
+
+# Requested capture settings -- leave unset to keep the camera's current values.
+# Width/height get clamped to the sensor's allowed range and step size, and the
+# frame rate is capped by the exposure time; the script prints what it actually got.
+# Full sensor is 1440x1080 (width step 4, height step 2), frame rate range 1-200.
+# frame_width: 1440
+# frame_height: 1080
+
+# These cameras are currently sitting at ~10 fps with ~30 ms auto exposure, which
+# is a lot of motion blur for a moving board. Pinning a short exposure and a
+# higher rate gives sharper corners and more usable views per minute. 5 ms of
+# exposure allows up to ~200 fps, so 30 is not rate-limited by it.
+fps: 30
+exposure_us: 5000
+
+# Mono sensors, so gain is the only way to brighten a short exposure. Raise this
+# if the board comes out too dark; noise matters much less than blur here.
+gain_db: 10.0
+
+# false (default) keeps every frame, so the preview falls behind if the writer
+# cannot keep up. true always shows the newest frame but drops the ones it skips.
+buffer_newest_only: false
+
+# How long to wait for a frame before giving up
+grab_timeout_ms: 5000
+
+# Used if the camera reports no frame rate
+fallback_fps: 30.0
