@@ -18,6 +18,7 @@ System Settings > Privacy & Security > Camera.
 """
 
 import argparse
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -67,25 +68,40 @@ class Config:
         return config
 
 
+def capture_backend() -> int:
+    """The native capture backend for this platform.
+
+    CAP_ANY would let OpenCV choose, but naming the backend avoids it silently
+    falling back to a slow or broken one.
+    """
+    if sys.platform == "darwin":
+        return cv2.CAP_AVFOUNDATION
+    if sys.platform == "win32":
+        return cv2.CAP_DSHOW
+    return cv2.CAP_V4L2
+
+
 def list_cameras(n_indices: int = 4) -> None:
     """Print which camera indices can be opened.
 
     A bit slow, each failed index takes a moment to time out.
     """
     for idx in range(n_indices):
-        cap = cv2.VideoCapture(idx, cv2.CAP_AVFOUNDATION)
-        if cap.isOpened():
+        cap = cv2.VideoCapture(idx, capture_backend())
+        if not cap.isOpened():
+            print(f"camera {idx}: not available")
+        else:
             ok, frame = cap.read()
             if ok:
                 print(f"camera {idx}: available, frame shape {frame.shape}")
-        else:
-            print(f"camera {idx}: not available")
+            else:
+                print(f"camera {idx}: opened but returned no frame")
         cap.release()
 
 
 def open_camera(config: Config):
     """Open the camera, apply the requested settings, and report the actual ones."""
-    cap = cv2.VideoCapture(config.camera_index, cv2.CAP_AVFOUNDATION)
+    cap = cv2.VideoCapture(config.camera_index, capture_backend())
     if not cap.isOpened():
         raise RuntimeError(f"Could not open camera {config.camera_index}")
 
