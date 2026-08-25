@@ -15,7 +15,7 @@ one frame, respawn, and carry on.
 
 Usage mirrors stag.detectMarkers:
 
-    from stag_safe import StagDetector
+    from crab_stags.stag_safe import StagDetector
 
     with StagDetector(libraryHD=15) as detector:
         while True:
@@ -102,6 +102,9 @@ class StagDetector:
         Seconds to wait for one frame's result. Guards against a hang rather
         than a crash (a crash is detected immediately, via the closed pipe).
         Generous by default: this is a deadlock backstop, not a latency budget.
+        Implemented with select() on a pipe, which is POSIX-only; on Windows
+        this would need a reader thread instead. Everything else here is
+        portable.
     max_restarts : int or None
         Give up after this many worker deaths, so a systematically fatal input
         cannot spin forever. None for no limit.
