@@ -1,0 +1,54 @@
+# Config for scripts/detect_markers_flir.py
+# Paths are resolved relative to this file.
+
+# Which camera to detect on, by serial number (run with --list-cameras to see
+# them). Serials survive replugs and reboots; enumeration order does not, so with
+# two cameras attached always name one here. Leave unset to take the first found.
+# Both cameras here are mono Blackfly S BFS-U3-16S2M, 1440x1080:
+#   23025370  and  23594005
+camera_serial: "23025370"
+
+# STag library/family: one of [11, 13, 15, 17, 19, 21, 23]
+stag_libraryHD: 15
+
+# Camera intrinsics from scripts/compute_intrinsics.py.
+# Optional, and only used to undistort the marker corners before the centre is
+# computed. Without it the centre assumes a pinhole camera, which costs up to
+# about a pixel near the frame edge.
+# Must describe a single camera, calibrated at the resolution used here.
+intrinsics: ../calibration/calibration_video_flir23025370_20260825_1725_intrinsics.toml
+
+# Requested capture settings -- leave unset to keep the camera's current values,
+# which is what you want if the camera has already been set up for the session
+# (these do not touch trigger mode either way). The script prints what it got.
+# The camera is currently at 1440x1080, 30 fps, 5 ms exposure, 10 dB gain.
+# frame_width: 1440
+# frame_height: 1080
+# fps: 30
+# exposure_us: 5000
+# gain_db: 10.0
+
+# true (default) detects on the newest frame the camera has, dropping the ones
+# that piled up while the previous frame was being processed -- so detections
+# track the present even though detection is slower than acquisition.
+# false keeps every frame instead, and falls further behind as the run goes on.
+buffer_newest_only: true
+
+# How long to wait for a frame before giving up. A camera left in trigger mode
+# with nothing triggering it hits this, and the run ends with what it has.
+grab_timeout_ms: 5000
+
+# Where the .csv (and annotated .mp4) go
+# defaults to the repo's output/ folder (a sibling of scripts/)
+# output_dir: ../output
+
+save_annotated_video: true
+
+# press q to stop
+show_preview: true
+
+# Stop after this many frames. Leave unset to run until 'q' or Ctrl-C.
+# max_frames: 300
+
+# Used if the camera reports 0 fps
+fallback_fps: 30.0
