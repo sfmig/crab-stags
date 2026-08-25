@@ -24,7 +24,7 @@ from caliscope.api import CameraArray
 # stag.detectMarkers segfaults on some real frames (an upstream buffer overrun
 # in its edge detector, unfixed as of stag-python 1.1.1). Running it in a
 # subprocess keeps a bad frame from killing the kernel; see
-# crab_stags/stag_safe.py. Run this from the repo root so crab_stags imports.
+# crab_stags/stag_safe.py.
 from crab_stags.stag_safe import StagDetector
 
 # project_points dispatches between the Brown-Conrady and fisheye equidistant

@@ -15,7 +15,6 @@ assumes a pinhole camera and is off by up to about a pixel near the frame edge
 
 import argparse
 import csv
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -32,10 +31,7 @@ from caliscope.core.reprojection import project_points
 
 # stag.detectMarkers still segfaults on some real frames (upstream buffer
 # overrun, unfixed in stag-python 1.1.1), so detection runs in a subprocess.
-# Put the repo root on the path so crab_stags imports no matter where this
-# script is run from.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from crab_stags.stag_safe import StagDetector  # noqa: E402
+from crab_stags.stag_safe import StagDetector
 
 
 @dataclass
