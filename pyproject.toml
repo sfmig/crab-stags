@@ -8,19 +8,26 @@ version = "0.1.0"
 description = "STag marker tracking for the crab project"
 requires-python = ">=3.12"
 dependencies = [
-    "caliscope==0.11.5",
+    #"caliscope==0.11.5",
     # caliscope declares only `opencv-python>=4.8.0.74` (no upper bound), so a fresh
     # resolve picks up OpenCV 5.x. OpenCV 5 moved the fisheye calibration flags out of
     # the cv2.fisheye submodule to the top level, so caliscope's fisheye intrinsic
     # calibration dies with:
     #   AttributeError: module 'cv2.fisheye' has no attribute 'CALIB_RECOMPUTE_EXTRINSIC'
     # Cap at <5 until caliscope supports OpenCV 5.
-    "opencv-python>=4.8.0.74,<5",
-    "numpy==2.5.1",
-    "stag-python==1.1.1",
-    "matplotlib",
-    "pyyaml",
+    #"opencv-python>=4.8.0.74,<5",
+    #"numpy==2.5.1",
+    #"stag-python==1.1.1",
+    #"matplotlib",
+    #"pyyaml",
 ]
+
+[project.optional-dependencies]
+# For the scripts that talk to the FLIR Blackfly cameras directly:
+# scripts/capture_calibration_video_flir.py and scripts/detect_markers_flir.py.
+# EasyPySpin is a wrapper around PySpin, and PySpin itself is not on PyPI:
+# install the Spinnaker SDK and its Python wheel from FLIR first.
+flir = ["EasyPySpin==2.0.1"]
 
 # Entry point for the marker-detection script, so it can be run as
 # `detect-markers <config.yaml>` from anywhere instead of
