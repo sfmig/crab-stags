@@ -13,12 +13,12 @@ stag_libraryHD: 15
 # Optional, and only used to undistort the marker corners before the centre is
 # computed. Without it the centre assumes a pinhole camera, which costs up to
 # about a pixel near the frame edge.
+# Must describe a single camera.
 intrinsics: ../calibration/calibration_video_20260807_1823_intrinsics.toml
-cam_id: 0
 
 # Where the .csv (and annotated .mp4) go
-# defaults to the video's folder, or to this file's folder for a live camera
-# output_dir: ../calibration
+# defaults to the repo's output/ folder (a sibling of scripts/)
+# output_dir: ../output
 
 save_annotated_video: true
 
