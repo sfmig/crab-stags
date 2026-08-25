@@ -1,0 +1,25 @@
+# Config for scripts/compute_intrinsics.py
+# Paths are resolved relative to this file.
+
+# Where the calibration videos live: the video named on the command line is
+# looked up here (defaults to this file's folder)
+calibration_dir: ../calibration
+
+# Charuco board geometry.
+# The square size does NOT affect the intrinsics (calibration is scale-free):
+# measure the board after intrinsic calibration, or use a different-sized
+# board for the extrinsic stage.
+charuco_n_cols: 4
+charuco_n_rows: 5
+charuco_square_sz_cm: 5.00
+
+# false = standard lens (5 distortion coeffs), true = fisheye (4 coeffs)
+is_camera_fisheye: false
+
+# Use every Nth frame for 2D landmark extraction
+frame_step: 1
+
+# Where the .toml and diagnostics .png go (defaults to the video's folder)
+# output_dir: ../calibration
+
+make_plots: true

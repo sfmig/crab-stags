@@ -1,0 +1,17 @@
+# Config for scripts/capture_calibration_video.py
+# Paths are resolved relative to this file.
+
+# 0 is usually the built-in webcam (run with --list-cameras to see what's there)
+camera_index: 0
+
+# Where the recorded .mp4 goes (defaults to this file's folder)
+output_dir: ../calibration
+
+# Requested capture settings -- leave unset to keep the camera's defaults.
+# The camera may ignore them; the script uses what the camera actually reports back.
+# frame_width: 1920
+# frame_height: 1080
+# fps: 30
+
+# Used if the camera reports 0 fps
+fallback_fps: 30.0
