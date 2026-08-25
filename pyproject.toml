@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crab-stags"
+version = "0.1.0"
+description = "STag marker tracking for the crab project"
+requires-python = ">=3.12"
+dependencies = [
+    "caliscope==0.11.5",
+    # caliscope declares only `opencv-python>=4.8.0.74` (no upper bound), so a fresh
+    # resolve picks up OpenCV 5.x. OpenCV 5 moved the fisheye calibration flags out of
+    # the cv2.fisheye submodule to the top level, so caliscope's fisheye intrinsic
+    # calibration dies with:
+    #   AttributeError: module 'cv2.fisheye' has no attribute 'CALIB_RECOMPUTE_EXTRINSIC'
+    # Cap at <5 until caliscope supports OpenCV 5.
+    "opencv-python>=4.8.0.74,<5",
+    "numpy==2.5.1",
+    "stag-python==1.1.1",
+    "matplotlib",
+    "pyyaml",
+]
+
+# Entry point for the marker-detection script, so it can be run as
+# `detect-markers <config.yaml>` from anywhere instead of
+# `python scripts/detect_markers.py <config.yaml>`.
+#
+# Commented out because entry points must name an *importable* module, and
+# scripts/ is not part of the package. To enable, first move the script to
+# src/crab_stags/detect_markers.py (its `from crab_stags.stag_safe import ...`
+# already works there), then uncomment and reinstall with `uv pip install -e .`.
+# [project.scripts]
+# detect-markers = "crab_stags.detect_markers:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
