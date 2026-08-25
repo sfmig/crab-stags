@@ -12,3 +12,5 @@ opencv-python>=4.8.0.74,<5
 
 numpy==2.5.1
 stag-python==1.1.1
+matplotlib
+pyyaml
