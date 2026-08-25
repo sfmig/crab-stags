@@ -5,7 +5,7 @@
 # them). Serials survive replugs and reboots; enumeration order does not, so with
 # two cameras attached always name one here. Leave unset to take the first found.
 # Both cameras here are mono Blackfly S BFS-U3-16S2M, 1440x1080:
-#   23025370  and  23594005
+#   23025370 (tub)  and  23594005 (dome)
 camera_serial: "23025370" 
 
 # Where the recorded .mp4 goes (defaults to this file's folder)
