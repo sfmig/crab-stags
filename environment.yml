@@ -1,0 +1,53 @@
+name: stags-env
+channels:
+  - conda-forge
+dependencies:
+  - bzip2=1.0.8
+  - ca-certificates=2026.7.22
+  - libexpat=2.8.1
+  - libffi=3.7.0
+  - liblzma=5.8.3
+  - libsqlite=3.53.4
+  - libzlib=1.3.2
+  - openssl=3.6.3
+  - packaging=26.3
+  - pip=26.2.1
+  - python=3.12.14
+  - setuptools=84.0.0
+  - tk=8.6.13
+  - ucrt=10.0.26100.0
+  - vc=14.5
+  - vc14_runtime=14.51.36247
+  - vcomp14=14.51.36247
+  - wheel=0.48.0
+  - pip:
+      - av==18.1.0
+      - caliscope==0.11.5
+      - contourpy==1.3.3
+      - crab-stags==0.1.0
+      - cycler==0.12.1
+      - easypyspin==2.0.1
+      - fonttools==4.63.0
+      - keyboard==0.13.5
+      - kiwisolver==1.5.0
+      - markdown-it-py==4.2.0
+      - matplotlib==3.11.1
+      - mdurl==0.1.2
+      - numpy==1.26.4
+      - opencv-python==4.14.0.94
+      - pandas==3.0.5
+      - pillow==12.3.0
+      - platformdirs==4.11.4
+      - pygments==2.21.0
+      - pyparsing==3.3.2
+      - python-dateutil==2.9.0.post0
+      - pyyaml==6.0.3
+      - rich==15.0.0
+      - rtoml==0.13.0
+      - scipy==1.17.1
+      - six==1.17.0
+      - spinnaker-python==4.4.0.246
+      - stag-python==1.1.1
+      - typing-extensions==4.16.0
+      - tzdata==2026.3
+prefix: C:\Users\110-dome\.conda\envs\stags-env
