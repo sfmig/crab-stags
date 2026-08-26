@@ -27,6 +27,11 @@ This one reads a live camera rather than a file, so it runs until you stop it:
 press 'q' in the preview window, or Ctrl-C, or set `max_frames`. Whatever was
 detected up to that point is still saved.
 
+The preview window also tunes the camera while it streams -- g/h gain, e/r
+exposure, t/y gamma, b/n black level -- so you can watch what a setting does to
+the detections instead of guessing, restarting, and guessing again. The values
+you land on are printed at the end in config-file form, ready to paste back.
+
 The centre is the intersection of the marker's image diagonals rather than the
 mean of its corners; see `crab_stags/markers.py` for why. Detection runs in a
 subprocess because stag-python segfaults on some real frames; see
@@ -88,6 +93,8 @@ class Config:
     fps: float | None = None
     exposure_us: float | None = None
     gain_db: float | None = None
+    gamma: float | None = None
+    black_level: float | None = None
 
     # True (the default here) always detects on the newest frame the camera has,
     # dropping whatever piled up while the previous one was being processed.
@@ -217,6 +224,167 @@ def apply_setting(cap, prop: int, value, name: str) -> None:
         raise RuntimeError(f"Camera did not accept {name}={value}")
 
 
+@dataclass(frozen=True)
+class LiveControl:
+    """One camera setting that the preview window can step with a key press.
+
+    Named by its GenICam node rather than a cv2.CAP_PROP_*: EasyPySpin only
+    maps a handful of properties to nodes, and BlackLevel is not among them, so
+    going straight to the node keeps every control on one code path.
+
+    The two keys are neighbours on the keyboard rather than a letter and its
+    shifted self, because HighGUI does not report shift the same way everywhere.
+    """
+
+    node: str
+    label: str  # shown in the preview overlay
+    config_key: str  # the Config field holding this, for the end-of-run summary
+    down_key: str
+    up_key: str
+    step: float  # what one key press changes the value by
+    fmt: str = "{:.1f}"
+    unit: str = ""
+    # Nodes to set before writing this one, because otherwise the write does
+    # nothing: an auto mode immediately overwrites the value, and the camera
+    # ignores Gamma entirely while GammaEnable is false.
+    prepare: tuple[tuple[str, object], ...] = ()
+
+
+LIVE_CONTROLS = (
+    LiveControl(
+        node="Gain",
+        label="gain",
+        config_key="gain_db",
+        down_key="g",
+        up_key="h",
+        step=1.0,
+        unit=" dB",
+        prepare=(("GainAuto", "Off"),),
+    ),
+    LiveControl(
+        node="ExposureTime",
+        label="exposure",
+        config_key="exposure_us",
+        down_key="e",
+        up_key="r",
+        step=1000.0,
+        fmt="{:.0f}",
+        unit=" us",
+        prepare=(("ExposureAuto", "Off"),),
+    ),
+    LiveControl(
+        node="Gamma",
+        label="gamma",
+        config_key="gamma",
+        down_key="t",
+        up_key="y",
+        step=0.05,
+        fmt="{:.2f}",
+        prepare=(("GammaEnable", True),),
+    ),
+    LiveControl(
+        node="BlackLevel",
+        label="black",
+        config_key="black_level",
+        down_key="b",
+        up_key="n",
+        step=0.1,
+        fmt="{:.2f}",
+        unit=" %",
+    ),
+)
+
+
+def read_node(cap, node: str) -> float | None:
+    """Read a numeric camera node, or None if this camera does not have it.
+
+    Missing nodes are a normal answer here rather than an error: not every FLIR
+    model carries every one of these, and a control the camera lacks is one we
+    simply do not offer.
+    """
+    try:
+        value = cap.get_pyspin_value(node)
+        return None if value is None else float(value)
+    except (PySpin.SpinnakerException, TypeError, ValueError):
+        return None
+
+
+class LiveSettings:
+    """The camera settings the preview can step, and their current values.
+
+    Built by asking the camera which of LIVE_CONTROLS it actually has, so the
+    keys on offer match the camera in front of you.
+
+    Values are cached rather than read back every frame: a GenICam read per
+    setting per frame is wasted work when only a key press changes them.
+    """
+
+    def __init__(self, cap):
+        self.cap = cap
+        self.controls = [c for c in LIVE_CONTROLS if read_node(cap, c.node) is not None]
+        self.values = {c.node: read_node(cap, c.node) for c in self.controls}
+        # key code -> (control, direction)
+        self.keys = {}
+        for control in self.controls:
+            self.keys[ord(control.down_key)] = (control, -1)
+            self.keys[ord(control.up_key)] = (control, +1)
+
+    def handle_key(self, key: int) -> bool:
+        """Step a setting if this key is bound to one; True if it was."""
+        if key not in self.keys:
+            return False
+        control, direction = self.keys[key]
+
+        for node, value in control.prepare:
+            self.cap.set_pyspin_value(node, value)
+        self.cap.set_pyspin_value(
+            control.node, self.values[control.node] + direction * control.step
+        )
+
+        # Read back instead of trusting the write: the camera clips to its own
+        # limits, so this is where "the gain will not go any higher" shows up.
+        actual = read_node(self.cap, control.node)
+        if actual is None or actual == self.values[control.node]:
+            # Nothing moved: the setting is already at one of the camera's
+            # limits, and repeating the same line for every further press of a
+            # held key would bury the ones that did something.
+            return True
+        self.values[control.node] = actual
+        print(f"{control.label} {self.format(control)}")
+        return True
+
+    def format(self, control: LiveControl) -> str:
+        return control.fmt.format(self.values[control.node]) + control.unit
+
+    def status(self) -> str:
+        """One line for the preview overlay: value and keys for each setting."""
+        return "  ".join(
+            f"{c.label} {self.format(c)} [{c.down_key}/{c.up_key}]"
+            for c in self.controls
+        )
+
+    def print_as_config(self) -> None:
+        """Print the settings landed on, ready to paste into the YAML config."""
+        if not self.controls:
+            return
+        print("\nCamera settings at the end of the run, for the config file:")
+        for control in self.controls:
+            value = control.fmt.format(self.values[control.node])
+            print(f"  {control.config_key}: {value}")
+
+
+def apply_node_setting(cap, node: str, value: float, name: str, prepare=()) -> None:
+    """Set one camera node, failing if the camera refuses it.
+
+    The node-name counterpart of apply_setting, for the settings EasyPySpin
+    does not expose as a cv2 property.
+    """
+    for prep_node, prep_value in prepare:
+        cap.set_pyspin_value(prep_node, prep_value)
+    if not cap.set_pyspin_value(node, value):
+        raise RuntimeError(f"Camera did not accept {name}={value}")
+
+
 def open_camera(config: Config, camera):
     """Open the camera, apply the requested settings, and report the actual ones."""
     # int -> camera index, str -> serial number
@@ -245,6 +413,20 @@ def open_camera(config: Config, camera):
         )
     if config.gain_db is not None:
         apply_setting(cap, cv2.CAP_PROP_GAIN, float(config.gain_db), "gain_db")
+
+    # Not cv2 properties, so these go straight to the camera nodes -- the same
+    # path the live preview keys use.
+    if config.gamma is not None:
+        apply_node_setting(
+            cap,
+            "Gamma",
+            float(config.gamma),
+            "gamma",
+            prepare=(("GammaEnable", True),),
+        )
+    if config.black_level is not None:
+        apply_node_setting(cap, "BlackLevel", float(config.black_level), "black_level")
+
     if config.fps is not None:
         apply_setting(cap, cv2.CAP_PROP_FPS, float(config.fps), "fps")
 
@@ -283,6 +465,16 @@ def open_camera(config: Config, camera):
         f"gain {cap.get(cv2.CAP_PROP_GAIN):.1f} dB"
     )
 
+    # Reported separately because not every camera has them, and gamma is not
+    # in effect at all while GammaEnable is false.
+    gamma = read_node(cap, "Gamma")
+    if gamma is not None:
+        disabled = "" if read_node(cap, "GammaEnable") else " (disabled)"
+        print(f"gamma {gamma:.2f}{disabled}")
+    black_level = read_node(cap, "BlackLevel")
+    if black_level is not None:
+        print(f"black level {black_level:.2f} %")
+
     return cap, (width, height), fps
 
 
@@ -317,6 +509,9 @@ def detect(config: Config, cap, camera, writer) -> tuple[list, int, list, float]
     frames read, the indices of the frames the detector crashed on, and how
     long the run lasted in seconds.
 
+    The preview's other keys step the camera settings in LIVE_CONTROLS, which
+    take effect on the camera immediately: the next frame shows the result.
+
     Runs until 'q' in the preview, Ctrl-C, or `max_frames`. A camera that stops
     delivering ends the run the same way, so the frames already detected on are
     saved rather than thrown away with the traceback.
@@ -326,9 +521,12 @@ def detect(config: Config, cap, camera, writer) -> tuple[list, int, list, float]
     frame_idx = 0
     t_start = time.time()
 
+    live = None
     if config.show_preview:
         # Resizable, because the full sensor is taller than a lot of screens
         cv2.namedWindow("markers", cv2.WINDOW_NORMAL)
+        live = LiveSettings(cap)
+        print(f"Preview keys: {live.status()}, [q] stop")
 
     try:
         while config.max_frames is None or frame_idx < config.max_frames:
@@ -381,16 +579,32 @@ def detect(config: Config, cap, camera, writer) -> tuple[list, int, list, float]
                     (0, 255, 0),
                     2,
                 )
+                # Smaller: this line carries every setting and its keys
+                cv2.putText(
+                    display,
+                    live.status(),
+                    (10, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 255, 0),
+                    2,
+                )
                 cv2.imshow("markers", display)
-                if cv2.waitKey(1) & 0xFF == ord("q"):
+
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord("q"):
                     frame_idx += 1
                     break
+                # Anything else may be a setting to step
+                live.handle_key(key)
 
             frame_idx += 1
     except KeyboardInterrupt:
         print(f"\nInterrupted after {frame_idx} frames")
     finally:
         detector.close()
+        if live is not None:
+            live.print_as_config()
         if config.show_preview:
             cv2.destroyAllWindows()
             for _ in range(4):  # nudge the window into actually closing

@@ -5,8 +5,8 @@
 # them). Serials survive replugs and reboots; enumeration order does not, so with
 # two cameras attached always name one here. Leave unset to take the first found.
 # Both cameras here are mono Blackfly S BFS-U3-16S2M, 1440x1080:
-#   23025370  and  23594005
-camera_serial: "23025370"
+#   23025370 (tub)  and  23594005 (dome - do not use; keep in trigger mode)
+camera_serial: "23025370" 
 
 # STag library/family: one of [11, 13, 15, 17, 19, 21, 23]
 stag_libraryHD: 15
@@ -16,7 +16,7 @@ stag_libraryHD: 15
 # computed. Without it the centre assumes a pinhole camera, which costs up to
 # about a pixel near the frame edge.
 # Must describe a single camera, calibrated at the resolution used here.
-intrinsics: ../calibration/calibration_video_flir23025370_20260825_1725_intrinsics.toml
+intrinsics: ../calibration/calibration_video_flir23025370_20260826_1604_intrinsics.toml
 
 # Requested capture settings -- leave unset to keep the camera's current values,
 # which is what you want if the camera has already been set up for the session
@@ -27,6 +27,8 @@ intrinsics: ../calibration/calibration_video_flir23025370_20260825_1725_intrinsi
 # fps: 30
 # exposure_us: 5000
 # gain_db: 10.0
+# gamma: 1.0
+# black_level: 2.0
 
 # true (default) detects on the newest frame the camera has, dropping the ones
 # that piled up while the previous frame was being processed -- so detections
@@ -42,9 +44,18 @@ grab_timeout_ms: 5000
 # defaults to the repo's output/ folder (a sibling of scripts/)
 # output_dir: ../output
 
-save_annotated_video: true
+# raising exposure lowers AcquisitionResultingFrameRate, but the VideoWriter 
+# was created with the fps read at open time,
+# so an mp4 recorded while you're tuning will play back at the wrong rate. 
+# That's fine for a tuning pass — just set save_annotated_video: false while you're fiddling.
+save_annotated_video: false
 
-# press q to stop
+# press q to stop.
+# The preview also tunes the camera live, one step per key press:
+#   g/h  gain          e/r  exposure
+#   t/y  gamma         b/n  black level
+# The settings you end on are printed in the form of the keys above, so a
+# tuning run tells you what to write here.
 show_preview: true
 
 # Stop after this many frames. Leave unset to run until 'q' or Ctrl-C.
