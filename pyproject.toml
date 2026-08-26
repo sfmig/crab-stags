@@ -7,26 +7,61 @@ name = "crab-stags"
 version = "0.1.0"
 description = "STag marker tracking for the crab project"
 requires-python = ">=3.12"
+
+# Two ways to get an environment, in order of preference:
+#
+# 1. This file -- `uv pip install -e .` (add `[flir]` for the camera scripts). It
+#    targets numpy 2.x, the direction every dependency's own metadata points at, so
+#    it needs the fewest pins and survives upgrades best. Not yet run against a
+#    camera; see the numpy note below.
+# 2. environment.yml / conda-win64.lock -- the known-good fallback. That is the exact
+#    `stags-env` (Windows, python 3.12.14) that was verified end to end on 2026-08-26:
+#    numpy 1.26.4, scipy 1.17.1, opencv-python 4.14.0.94, pandas 3.0.5, caliscope
+#    0.11.5, stag-python 1.1.1, EasyPySpin 2.0.1, spinnaker-python 4.4.0.246. It runs
+#    numpy 1.x, so it also carries the `scipy<1.18` cap explained below. Use it if the
+#    resolve from this file misbehaves: `conda env create -f environment.yml`, or
+#    `conda create -n stags-env --file conda-win64.lock` on win-64 for a byte-exact
+#    rebuild of the conda layer.
+#
 dependencies = [
-    #"caliscope==0.11.5",
+    "caliscope==0.11.5",
+
     # caliscope declares only `opencv-python>=4.8.0.74` (no upper bound), so a fresh
     # resolve picks up OpenCV 5.x. OpenCV 5 moved the fisheye calibration flags out of
     # the cv2.fisheye submodule to the top level, so caliscope's fisheye intrinsic
     # calibration dies with:
     #   AttributeError: module 'cv2.fisheye' has no attribute 'CALIB_RECOMPUTE_EXTRINSIC'
     # Cap at <5 until caliscope supports OpenCV 5.
-    #"opencv-python>=4.8.0.74,<5",
-    #"numpy==2.5.1",
-    #"stag-python==1.1.1",
-    #"matplotlib",
-    #"pyyaml",
+    "opencv-python>=4.8.0.74,<5",
+
+    # numpy 2.x is what spinnaker-python 4.4, opencv-python 4.14 and current scipy all
+    # declare, so nothing needs an extra pin to go with it. The PySpin docs saying
+    # "NumPy <2 is required for Python 3.10+" is stale: the 4.4 wheel itself declares
+    # `numpy>=2.0`, and frames were grabbed fine under both 1.26.4 and 2.5.2.
+    # scipy is not listed here: nothing in this repo imports it, it comes in via
+    # caliscope (which asks for scipy>=1.10.1). But if you ever drop back below
+    # numpy 2 you must add `scipy<1.18` explicitly -- scipy 1.18 calls `np.long`
+    # unguarded at import time (scipy/sparse/_sputils.py), which does not exist in
+    # numpy 1.x, and that kills `caliscope.api` and both detect scripts:
+    #   crab_stags.markers -> caliscope.api -> calibrate_extrinsics
+    #     -> bundle_parameterization -> scipy.sparse
+    "numpy>=2",
+    "matplotlib",
+    "pyyaml",
+    "stag-python==1.1.1",
 ]
 
 [project.optional-dependencies]
 # For the scripts that talk to the FLIR Blackfly cameras directly:
 # scripts/capture_calibration_video_flir.py and scripts/detect_markers_flir.py.
-# EasyPySpin is a wrapper around PySpin, and PySpin itself is not on PyPI:
-# install the Spinnaker SDK and its Python wheel from FLIR first.
+# EasyPySpin is a wrapper around PySpin, and PySpin (spinnaker-python) itself is not
+# on PyPI: install the Spinnaker SDK first and then its Python wheel, following
+# https://www.teledynevisionsolutions.com/en-gb/support/support-center/technical-guidance/iis/installing-pyspin-for-the-spinnaker-sdk/
+# The verified environment uses spinnaker-python 4.4.0.246, from
+# SpinnakerSDK_FULL_4.4.0.246_x64.exe. Ignore its `Requires-Dist: numpy>=2.0`;
+# that is a build requirement leaking into runtime metadata (NumPy 2-built
+# extensions stay runtime-compatible down to numpy 1.19), and frames were grabbed
+# successfully under both numpy 1.26.4 and 2.5.2.
 flir = ["EasyPySpin==2.0.1"]
 
 # Entry point for the marker-detection script, so it can be run as
