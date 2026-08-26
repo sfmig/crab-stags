@@ -11,13 +11,13 @@ calibration_dir: ../calibration
 # board for the extrinsic stage.
 charuco_n_cols: 4
 charuco_n_rows: 5
-charuco_square_sz_cm: 5.00 #remove bc this is confusing
+charuco_square_sz_cm: 5.00 #TODO remove bc this is confusing
 
 # false = standard lens (5 distortion coeffs), true = fisheye (4 coeffs)
 is_camera_fisheye: false
 
 # Use every Nth frame for 2D landmark extraction
-frame_step: 1
+frame_step: 10
 
 # Where the .toml and diagnostics .png go (defaults to the video's folder)
 # output_dir: ../calibration
